@@ -1,9 +1,30 @@
 // This #include statement was automatically added by the Particle IDE.
 #include <neopixel.h>
-
-// This #include statement was automatically added by the Particle IDE.
 #include <MQTT.h>
 
+// Particle OS configuration
+
+
+/**********     Defines     **********/
+// Timer intervals
+#define LED_UPDATE_INTERVAL 15            // interval at which the LED update function is run, ms
+#define SENSOR_READ_INTERVAL 100          // interval at which the function that polls the sensor is run, ms
+#define MQTT_CLIENT_INTERVAL 1000         // interval at which the function that sends data over MQTT is run, ms
+#define STATE_MANAGER_INTERVAL 100        // interval at which the function that manages system state is run, ms
+
+// Pins
+#define PMS5003_SET D6                    // PMS5003 "SET" pin
+#define PMS5003_nRST D3                   // PMS5003 "!RST" pin (active low)
+
+// PM thresholds
+#define PM10_THRESHOLD_RED 1000           // above this level, PM1.0 status is "red" (ug/m3)
+#define PM10_THRESHOLD_YELLOW 750         // above this level, PM1.0 status is "yellow" (ug/m3)
+#define PM25_THRESHOLD_RED 1000           // above this level, PM2.5 status is "red" (ug/m3)
+#define PM25_THRESHOLD_YELLOW 750         // above this level, PM2.5 status is "yellow" (ug/m3)
+#define PM100_THRESHOLD_RED 5000          // above this level, PM10 status is "red" (ug/m3)
+#define PM100_THRESHOLD_YELLOW 3750       // above this level, PM10 status is "yellow" (ug/m3)
+
+/**********     Structs     **********/
 struct pms5003data {
   uint16_t framelen;
   uint16_t pm10_standard, pm25_standard, pm100_standard;
@@ -13,15 +34,28 @@ struct pms5003data {
   uint16_t checksum;
 };
 
-struct pms5003data data;
-int last_successful_read_time;
-int last_read_attempt_time;
+struct sys_state {
+  bool network_connected;
+  bool cloud_connected;
+  bool mqtt_connected;
+  bool sensor_data_valid;
+  int last_update_time;
+  pms5003_data sensor_data;
+};
 
-int pm10_std, pm25_std, pm100_std;
 
-// Network/MQTT
+/**********     Globals     **********/
+struct sys_state state;
 MQTT mqtt_client("10.100.0.6", 1883, mqtt_callback);
 
+// Timers
+Timer led_update_timer( LED_UPDATE_INTERVAL, led_update );
+Timer sensor_read_timer( SENSOR_READ_INTERVAL, sensor_read );
+Timer mqtt_client_timer( MQTT_CLIENT_INTERVAL, mqtt_client );
+Timer state_manager_timer( STATE_MANAGER_INTERVAL, state_manager );
+
+
+/**********      Functions     **********/
 /* MQTT message receive callback */
 void mqtt_callback( char* topic, byte* payload, unsigned int length ){
     // do nothing for now
@@ -29,25 +63,31 @@ void mqtt_callback( char* topic, byte* payload, unsigned int length ){
 }
 
 void setup() {
-    pinMode(D6, OUTPUT);        // sensor SET
-    pinMode(D3, OUTPUT);        // sensor !RST
+    pinMode(PMS5003_SET, OUTPUT);        // sensor SET
+    pinMode(PMS5003_nRST, OUTPUT);        // sensor !RST
     
-    digitalWrite(D6, HIGH);
-    digitalWrite(D3, HIGH);
+    digitalWrite(PMS5003_SET, HIGH);
+    digitalWrite(PMS5003_nRST, HIGH);
+    
+    // TODO - need to pause to allow sensor to initialize
     
     Serial.begin(115200);
     Serial1.begin(9600);
     
-    Serial.println("I am alive");
+    // Initialize state
+    state.network_connected = false;
+    state.cloud_connected = false;
+    state.mqtt_connected = false;
+    state.sensor_data_valid = false;
+    state.last_update_time = 0;
     
-    Particle.variable( "LastReadTime", last_successful_read_time );
-    Particle.variable( "LastAttemptTime", last_read_attempt_time );
-    Particle.variable( "PM1.0", pm10_std );
-    Particle.variable( "PM2.5", pm25_std );
-    Particle.variable( "PM10", pm100_std );
+    // Kick off timers
+    led_update_timer.start();
+    
+//    Serial.println("I am alive");
     
      /* Connect MQTT */
-    mqtt_client.connect( "iaq-sensor-" + System.deviceID() );
+//    mqtt_client.connect( "iaq-sensor-" + System.deviceID() );
     
 }
 
