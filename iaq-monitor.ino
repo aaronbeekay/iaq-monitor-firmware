@@ -34,6 +34,8 @@ SYSTEM_MODE(SEMI_AUTOMATIC);    // Semi-automatic mode does not automatically co
 #define SENSOR_WAKEUP_DELAY 10000         // how long should we wait after powering up the sensor to start collecting data? (ms)
                                           //    NB: the PMS5003 manual says we should wait at least 30 seconds "because of the fan's performance"
 #define SENSOR_DATA_MAX_AGE 3000          // what's the oldest reading we can accept from the sensor? (ms)
+#define EEPROM_VALIDITY_ADDR 0            // write 0 to this address when the EEPROM topic has been written OK
+#define EEPROM_TOPIC_ADDR 4               // write the topic we want to use here (str)
 
 /**********     Structs     **********/
 struct pms5003data {
@@ -59,18 +61,26 @@ struct sys_state {
 
 /**********     Globals     **********/
 struct sys_state state;
-MQTT mqtt_client("10.100.0.6", 1883, mqtt_callback);
+String mqtt_topic_prefix;
+String mqtt_topic_id;
+//MQTT mqtt_conn("mqtt.custer.lan", 1883, mqtt_callback);
+MQTT mqtt_conn("10.100.0.6", 1883, mqtt_callback);
 Adafruit_NeoPixel leds(LED_COUNT, LED_DATA_PIN, LED_TYPE);
 
 // Timers
 Timer led_update_timer( LED_UPDATE_INTERVAL, gremlin );
 Timer sensor_read_timer( SENSOR_READ_INTERVAL, sensor_read );
-//Timer mqtt_client_timer( MQTT_CLIENT_INTERVAL, mqtt_client );
+Timer mqtt_client_timer( MQTT_CLIENT_INTERVAL, mqtt_client );
 Timer state_manager_timer( STATE_MANAGER_INTERVAL, state_manager );
 
 /**********      Functions     **********/
 /* MQTT message receive callback */
 void mqtt_callback( char* topic, byte* payload, unsigned int length ){
+    // copy received payload to null-terminated string
+    char p[length + 1];
+    memcpy(p, payload, length);
+    p[length] = NULL;
+
     // do nothing for now
     return;
 }
@@ -108,14 +118,63 @@ void setup() {
     led_update_timer.start();
     sensor_read_timer.start();
     state_manager_timer.start();
+    mqtt_client_timer.start();
     
     Particle.connect();
     
-//    Serial.println("I am alive");
+    // Configure MQTT topic
+    mqtt_topic_prefix = String("custer/");
+    mqtt_topic_id = get_device_mqtt_topic();
     
-     /* Connect MQTT */
-//    mqtt_client.connect( "iaq-sensor-" + System.deviceID() );
+    // Connect MQTT 
+    while( !mqtt_conn.isConnected() ){
+        mqtt_conn.connect( "iaq-sensor-" + System.deviceID() );
+        delay(1000);
+    }
     
+    Particle.function( "setTopic", writeMqttTopic );
+    
+}
+
+/* Write the MQTT topic to EEPROM.
+ *  For now this is just called as a cloud function due to laziness.
+ */
+int writeMqttTopic( String newTopic ){
+    EEPROM.put(EEPROM_TOPIC_ADDR, newTopic.c_str());
+    EEPROM.put(EEPROM_VALIDITY_ADDR, 0);
+    
+    uint8_t validity;
+    String eepromTopic;
+    
+    EEPROM.get(EEPROM_TOPIC_ADDR, eepromTopic);
+    EEPROM.get(EEPROM_VALIDITY_ADDR, validity);
+    
+    if( eepromTopic == newTopic && validity == 0 ){
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+/* This function handles the outbound communications over MQTT.
+ *  If the sensor data is valid, will send out one message `<mqtt_topic_prefix>iaq_sensor/<mqtt_topic_id>/pm` with PM data.
+ *      (Note the slashes - `mqtt_topic_prefix` should end with a / if set, but `mqtt_topic_id` should not.)
+ *  If the sensor data is not valid, will send out ????? TODO.
+ */
+void mqtt_client(){
+    String mqtt_topic;
+    String mqtt_payload;
+    
+    if(state.mqtt_connected){
+        if( state.sensor_data_valid ){
+            mqtt_topic = String::format("%siaq_sensor/%s/pm", mqtt_topic_prefix.c_str(), mqtt_topic_id.c_str());
+            mqtt_payload = String::format("{'pm10': %u, 'pm2.5': %u, 'pm1.0': %u}", state.sensor_data.pm100_env, state.sensor_data.pm25_env, state.sensor_data.pm10_env );
+        
+            Serial.printlnf( "Topic: %s", mqtt_topic );
+            Serial.printlnf( "Payload: %s", mqtt_payload );
+            mqtt_conn.publish( mqtt_topic, mqtt_payload );
+        }
+    }
 }
 
 /* This function is called on a regular interval by the `sensor_read_timer` timer.
@@ -125,12 +184,11 @@ void setup() {
  *      - mqtt_connected
  *      - sensor_data_valid
  */
-
 void state_manager(){
     state.network_connected = WiFi.ready();
     state.cloud_connected = Particle.connected();
-    //state.mqtt_connected = mqtt_client.isConnected();
-    state.mqtt_connected = true;                        //DEBUG/DEV
+    state.mqtt_connected = mqtt_conn.isConnected();
+    //state.mqtt_connected = true;                        //DEBUG/DEV
     
     Serial.printlnf("%u: net: %d | cloud: %d | mqtt: %d", millis(), state.network_connected, state.cloud_connected, state.mqtt_connected);
     
@@ -150,6 +208,29 @@ void state_manager(){
             // We are still waiting for the sensor to warm up
             state.sensor_data_valid = false;
         }
+    }
+}
+
+/* Return a String identifier for the device's MQTT topic.
+ *  IAQ data is published to the topic `custer/iaq_sensor/<identifier>/pm`.
+ *  If saved in EEPROM, this function will return the identifier from EEPROM.
+ *  If not, will return an identifier based on the MAC address of the device.
+ */
+String get_device_mqtt_topic(){
+    uint8_t validityFlag;
+    String topic;
+    
+    EEPROM.get( EEPROM_VALIDITY_ADDR, validityFlag );
+    if( validityFlag == 0 ){
+        // load topic from EEPROM
+        EEPROM.get( EEPROM_TOPIC_ADDR, topic );
+        return topic;
+    } else {
+        // set topic from device MAC
+        byte mac[6];
+        waitUntil( WiFi.ready );
+        WiFi.macAddress(mac);
+        return String::format("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     }
 }
 
