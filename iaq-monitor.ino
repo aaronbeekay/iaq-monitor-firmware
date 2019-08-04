@@ -131,7 +131,7 @@ void setup() {
     // Connect MQTT 
     while( !mqtt_conn.isConnected() ){
         mqtt_conn.connect( "iaq-sensor-" + System.deviceID() );
-        delay(1000);
+        waitFor( mqtt_conn.isConnected, 10000 );                    // wait up to 10 seconds for mqtt connection to come online
     }
     
     Particle.function( "setTopic", writeMqttTopic );
@@ -358,6 +358,21 @@ uint32_t blend( uint32_t a, uint32_t b, float frac){
 }
 
 void loop() {
+    
+    if( !state.network_connected ){
+        WiFi.connect( WIFI_CONNECT_SKIP_LISTEN );       // try to reconnect to wifi network
+        waitFor( WiFi.ready, 15000 );                   // wait 15 seconds for reconnect to succeed before continuing
+    }
+    
+    if( state.network_connected && !state.cloud_connected ){
+        Particle.connect();
+        waitFor( Particle.connected, 15000 );           // wait 15 seconds for reconnect before continuing
+    }
+    
+    if( state.network_connected && !state.mqtt_connected ){
+        mqtt_conn.connect( "iaq-sensor-" + System.deviceID() );
+        waitFor( mqtt_conn.isConnected, 10000 );                    // wait up to 10 seconds for mqtt connection to come online
+    }
 
 }
 
