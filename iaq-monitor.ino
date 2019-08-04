@@ -106,12 +106,17 @@ void setup() {
     
     state.sensor_initialized = true;
     state.sensor_init_time_ms = millis();      // Start the clock on the sensor warmup time.
-                                            // Don't use now() here because we probably don't have a valid RTC time.
+                                               // Don't use now() here because we probably don't have a valid RTC time.
                                             
-    // Set up LED
+    // Set up our LED ring
     leds.begin();
     leds.clear();
     leds.show();
+    
+    // Disable Photon onboard LED (it shows through the housing)
+    // TODO: later on, can improve behavior by using LEDStatus class instead of just turning off LED - so that device errors can still activate LED
+    RGB.control(true);
+    RGB.color(0, 0, 0);     // off
     
     Serial.begin(115200);
     Serial1.begin(9600);
