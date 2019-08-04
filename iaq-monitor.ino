@@ -23,12 +23,12 @@ SYSTEM_MODE(SEMI_AUTOMATIC);    // Semi-automatic mode does not automatically co
 #define LED_TYPE WS2812B
 
 // PM thresholds
-#define PM10_THRESHOLD_RED 1000           // above this level, PM1.0 status is "red" (ug/m3)
-#define PM10_THRESHOLD_YELLOW 750         // above this level, PM1.0 status is "yellow" (ug/m3)
-#define PM25_THRESHOLD_RED 1000           // above this level, PM2.5 status is "red" (ug/m3)
-#define PM25_THRESHOLD_YELLOW 750         // above this level, PM2.5 status is "yellow" (ug/m3)
-#define PM100_THRESHOLD_RED 5000          // above this level, PM10 status is "red" (ug/m3)
-#define PM100_THRESHOLD_YELLOW 3750       // above this level, PM10 status is "yellow" (ug/m3)
+#define PM10_THRESHOLD_RED 25             // above this level, PM1.0 status is "red" (ug/m3)
+#define PM10_THRESHOLD_YELLOW 10          // above this level, PM1.0 status is "yellow" (ug/m3)
+#define PM25_THRESHOLD_RED 30             // above this level, PM2.5 status is "red" (ug/m3)
+#define PM25_THRESHOLD_YELLOW 12          // above this level, PM2.5 status is "yellow" (ug/m3)
+#define PM100_THRESHOLD_RED 100           // above this level, PM10 status is "red" (ug/m3)
+#define PM100_THRESHOLD_YELLOW 50         // above this level, PM10 status is "yellow" (ug/m3)
 
 #define LED_SPINNER_PERIOD 750            // how long does it take the spinner to go around once? (ms)
 #define SENSOR_WAKEUP_DELAY 10000         // how long should we wait after powering up the sensor to start collecting data? (ms)
