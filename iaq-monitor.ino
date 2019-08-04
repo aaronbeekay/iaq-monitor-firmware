@@ -11,7 +11,7 @@ SYSTEM_MODE(SEMI_AUTOMATIC);    // Semi-automatic mode does not automatically co
 // Timer intervals
 #define LED_UPDATE_INTERVAL 15            // interval at which the LED update function is run, ms
 #define SENSOR_READ_INTERVAL 100          // interval at which the function that polls the sensor is run, ms
-#define MQTT_CLIENT_INTERVAL 1000         // interval at which the function that sends data over MQTT is run, ms
+#define MQTT_CLIENT_INTERVAL 5000         // interval at which the function that sends data over MQTT is run, ms
 #define STATE_MANAGER_INTERVAL 100        // interval at which the function that manages system state is run, ms
 
 // Pins
@@ -36,6 +36,8 @@ SYSTEM_MODE(SEMI_AUTOMATIC);    // Semi-automatic mode does not automatically co
 #define SENSOR_DATA_MAX_AGE 3000          // what's the oldest reading we can accept from the sensor? (ms)
 #define EEPROM_VALIDITY_ADDR 0            // write 0 to this address when the EEPROM topic has been written OK
 #define EEPROM_TOPIC_ADDR 4               // write the topic we want to use here (str)
+
+#define HARDCODED_MQTT_TOPIC "livingroom"
 
 /**********     Structs     **********/
 struct pms5003data {
@@ -167,11 +169,19 @@ void mqtt_client(){
     
     if(state.mqtt_connected){
         if( state.sensor_data_valid ){
-            mqtt_topic = String::format("%siaq_sensor/%s/pm", mqtt_topic_prefix.c_str(), mqtt_topic_id.c_str());
-            mqtt_payload = String::format("{'pm10': %u, 'pm2.5': %u, 'pm1.0': %u}", state.sensor_data.pm100_env, state.sensor_data.pm25_env, state.sensor_data.pm10_env );
-        
-            Serial.printlnf( "Topic: %s", mqtt_topic );
-            Serial.printlnf( "Payload: %s", mqtt_payload );
+            // PM10
+            mqtt_topic = String::format("%siaq_sensor/%s/pm10", mqtt_topic_prefix.c_str(), mqtt_topic_id.c_str());
+            mqtt_payload = String::format("%u", state.sensor_data.pm100_env);
+            mqtt_conn.publish( mqtt_topic, mqtt_payload );
+            
+            //PM2.5
+            mqtt_topic = String::format("%siaq_sensor/%s/pm2.5", mqtt_topic_prefix.c_str(), mqtt_topic_id.c_str());
+            mqtt_payload = String::format("%u", state.sensor_data.pm25_env);
+            mqtt_conn.publish( mqtt_topic, mqtt_payload );
+            
+            //PM1.0
+            mqtt_topic = String::format("%siaq_sensor/%s/pm1.0", mqtt_topic_prefix.c_str(), mqtt_topic_id.c_str());
+            mqtt_payload = String::format("%u", state.sensor_data.pm10_env);
             mqtt_conn.publish( mqtt_topic, mqtt_payload );
         }
     }
@@ -188,8 +198,7 @@ void state_manager(){
     state.network_connected = WiFi.ready();
     state.cloud_connected = Particle.connected();
     state.mqtt_connected = mqtt_conn.isConnected();
-    //state.mqtt_connected = true;                        //DEBUG/DEV
-    
+
     Serial.printlnf("%u: net: %d | cloud: %d | mqtt: %d", millis(), state.network_connected, state.cloud_connected, state.mqtt_connected);
     
     if( state.sensor_initialized == true ){
@@ -217,6 +226,8 @@ void state_manager(){
  *  If not, will return an identifier based on the MAC address of the device.
  */
 String get_device_mqtt_topic(){
+    
+    return String( HARDCODED_MQTT_TOPIC );      // fuck it
     uint8_t validityFlag;
     String topic;
     
